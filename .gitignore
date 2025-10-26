@@ -1,0 +1,15 @@
+This file tells Git to ignore compiled artifacts and build outputs.
+
+This is critical for a clean source code repository.
+
+Object files
+*.o
+
+Final executable and related files
+*.elf*.map*.asm
+
+Preprocessed and assembly files
+*.i*.s
+
+VS Code user-specific settings
+.vscode/.DS_Store.vscode/settings.json
