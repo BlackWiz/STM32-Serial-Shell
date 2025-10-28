@@ -1,77 +1,117 @@
-# Serial-JSON-Bridge
+# STM32 Serial Shell - CLI with JSON Support
 
-## Why This Exists
-
-I built this for one reason: to understand how parsers actually work. How do you take a massive chunk of data, break it into pieces, and send it through a protocol without messing it up?
-
-That's the core of everything in embedded systems.
-
-## What I Got Out of It
-
-- Actually understood driver architecture instead of just copying code
-- Debugged a hard fault and learned what "memory constraints" really means
-- Built something that doesn't fall apart when someone else tries to use it
+An interactive command-line interface for STM32 that processes commands over UART. Built to understand embedded parsers and driver architecture.
 
 ## What It Does
 
-Takes a hardcoded JSON string embedded in the STM32 firmware, parses it using JSMN on the microcontroller itself, extracts the key-value pairs, and transmits the parsed data back through UART to a virtual COM port. All on bare-metal hardware with fixed memory.
+Type commands in a serial terminal → STM32 processes them → Executes actions → Responds back
+
+**Example Commands:**
+```bash
+help
+set led on
+get status
+```
+
+Can also accept JSON format for structured commands.
+
+## System Flow
 
 ```mermaid
 graph LR
-    A[Hardcoded JSON String] -->|In Firmware| B[JSMN Parser on STM32]
-    B -->|Tokenize| C[Extract Keys & Values]
-    C -->|Format Output| D[UART TX]
-    D -->|Serial Data| E[Virtual COM Port/PC]
+    A[Terminal] -->|UART RX| B[STM32<br/>Interrupt]
+    B --> C[CLI Parser<br/>Command Split]
+    C --> D[Command<br/>Handler]
+    D -->|UART TX| E[Response<br/>Terminal]
     
-    style A fill:#ffe6e6,stroke:#333
-    style B fill:#e6f3ff,stroke:#333
-    style C fill:#e6ffe6,stroke:#333
-    style E fill:#fff4e6,stroke:#333
+    style A fill:#e1f5e1
+    style C fill:#e1e5ff
+    style D fill:#ffe1f0
+    style E fill:#e1f5e1
 ```
 
-## How I Built This
+**Flow Details:**
+1. UART receives data byte-by-byte via interrupts
+2. CLI parser extracts command and parameters
+3. Registered handler executes the command
+4. Response formatted and sent back via UART
 
-**Step 1: Started Stupid Simple**  
-Picked UART because it's the most basic protocol. No fancy stuff. Just understand how data actually moves.
+## Architecture
 
-**Step 2: Kept Driver and App Completely Separate**  
-Driver handles all the hardware setup. App doesn't touch any of it. This separation is everything.
+**Clean 3-Layer Design:**
 
-**Step 3: Actually Built a Parser**  
-Took incoming data, broke it into tokens, sent it forward without losing anything. Sounds simple but it's not.
+- **uart.c/h** - Hardware driver (interrupts, state machine, error handling)
+- **em-cli.c/h** - Command parser (registration, parameter extraction)
+- **jsmn.c/h** - JSON parser (optional, for JSON commands)
+- **main.c** - Application (command handlers, main loop)
 
-**Step 4: Tested on Real Hardware**  
-Stopped simulating. Used actual boards. Reality hits different.
+## Key Features
 
-**Step 5: Hit a Wall and Learned**  
-Stack overflow crashed everything. That one mistake taught me more than anything that worked smoothly. Understanding hardware limits is what separates embedded engineers from everyone else.
+✅ Interrupt-driven UART (non-blocking)  
+✅ Command registration system  
+✅ Built-in commands: `help`, `set`, `get`  
+✅ JSON parsing support with JSMN  
+✅ Zero dynamic memory allocation  
+✅ Error detection & recovery  
 
-## The Architecture
+## Quick Start
 
-**uart.c** → Interrupt-driven UART driver. Handles TX/RX byte-by-byte with state machines (IDLE, BUSY, ERROR).
+**Hardware:** STM32G0 + USB-UART adapter
 
-**jsmn.c** → Lightweight JSON parser. No memory allocation. Just returns token indices pointing to the original string.
+```bash
+# Clone repo
+git clone https://github.com/BlackWiz/STM32-Serial-Shell.git
 
-**jsonprocess.c** → Application logic. Takes tokens from JSMN, extracts key-value pairs, executes commands.
+# Build and flash to STM32
+# Connect serial terminal
+screen /dev/ttyUSB0 9600
+```
 
-Send `{"user": "johndoe", "uid": 1000}` and watch it parse, extract, and respond.
+**Try it:**
+```
+> help
+> set test 123
+> get test
+```
 
-## What Actually Matters
+## Adding Your Command
 
-**Memory constraints:** STM32 has limited stack. I overflowed it and got hard faults. Fixed buffers and careful indexing are non-negotiable.
+```c
+// Define handler
+base_type my_cmd_handler(char *out, size_t len, const char *cmd) {
+    sprintf(out, "Custom response\r\n");
+    return CLI_FALSE;
+}
 
-**State machines:** UART runs on interrupts. One byte at a time. Miss a state and you lose data or hang.
+// Define command
+const cli_command_definition_t my_cmd = {
+    "mycmd",
+    "My custom command",
+    my_cmd_handler,
+    0  // parameter count
+};
 
-**Separation:** When parsing logic mixed with driver code, debugging was impossible. Clean layers mean you can isolate problems.
+// Register in main
+cli_register_command(&my_cmd);
+```
 
-**Error handling:** UART can fail (overrun, framing, noise). The driver catches these and provides recovery. Ignore them and your system dies silently.
+## Technical Notes
 
-## Tech Stack
+**UART State Machine:**
+- IDLE → TX_BUSY → IDLE
+- IDLE → RX_BUSY → IDLE  
+- Error states with recovery
 
-STM32G0 | UART (9600 baud) | JSMN Parser | Bare-metal C
+**Memory Safety:**
+- Fixed buffers (no malloc)
+- Bounds checking on all inputs
+- Stack-aware design
 
-Tested on real hardware. No HAL. No simulation lies.
+**Built for learning:**
+- Driver/app separation
+- Real hardware tested
+- No HAL dependencies
 
 ---
 
-*Built to understand parsers. Debugged through crashes. That's how you actually learn embedded systems.*
+**STM32G0 | UART (9600 baud) | Bare-metal C | No simulation lies**
