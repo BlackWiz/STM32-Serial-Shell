@@ -117,6 +117,7 @@ cli_process (void)
     /* Only process when command reception is complete */
     if (UART_STATE_IDLE == g_rx_state)
     {
+        
         /* Null-terminate received command */
         if (g_rx_index > 0u)
         {
